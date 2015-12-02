@@ -22,7 +22,9 @@ public class Server
   //rooms
   static private HashMap<String,Set<SocketChannel>> rooms = new HashMap<String,Set<SocketChannel>>();
   //message types
-  static private enum Kind {NEWNICK, MSG, JOINED, LEFT, ERROR};
+  static private enum Kind {NEWNICK, MSG, JOINED, LEFT, ERROR, BYE};
+
+  static private boolean inception = false;
 
   static public void main( String args[] ) throws Exception {
     // Parse port from command line
@@ -131,6 +133,9 @@ public class Server
 
   // Just read the message from the socket and send it to stdout
   static private boolean processInput( SocketChannel sc) throws IOException {
+    //user
+    User u = users.get(sc);
+    State st = u.getState();
     // Read the message to the buffer
     buffer.clear();
     sc.read( buffer );
@@ -143,20 +148,22 @@ public class Server
     String message = decoder.decode(buffer).toString();
     //CHECKS IF message IS A MESSAGE OR COMMAND
     if(message.length()>0 && message.charAt(0)=='/'){
-      if(message.length()>1 && message.charAt(1)=='/')
+      if(message.length()>1 && message.charAt(1)=='/' && st == State.INSIDE)
         processMessage(sc, message.substring(1,message.length()), Kind.MSG);//escape "/"
       else
         processCommand(sc, message.substring(1,message.length()));//escape "/"
     }
-    else
+    else if(st == State.INSIDE)
       processMessage(sc, message, Kind.MSG);
+    else
+    processMessage(sc, message, Kind.ERROR);
     return true;
   }
 
-  //SENDS MESSAGE TO ALL THE USERS for now...
+  //SENDS MESSAGE
  static private void sendMessage(SocketChannel sc, ByteBuffer msgBuffer, Kind k){
    User u = users.get(sc);
-   if(rooms.containsKey(u.getRoom())){
+   if(u.getState() == State.INSIDE){
      Set<SocketChannel> set = rooms.get(u.getRoom());
      Iterator<SocketChannel> it = set.iterator();
      //msgBuffer.flip();
@@ -179,7 +186,7 @@ public class Server
     else{
       ByteBuffer errorBuffer = ByteBuffer.allocate(16384);
       try{
-        errorBuffer = encoder.encode(CharBuffer.wrap("You must join a room"));
+        errorBuffer = encoder.encode(CharBuffer.wrap("ERROR\n"));
       }catch(CharacterCodingException e){
         System.err.println( "Exception: couldn't write to socket" );
        }
@@ -197,12 +204,13 @@ public class Server
    //FINAL MESSAGE - nickName: message
    ByteBuffer msgBuffer = ByteBuffer.allocate(16384);
    String sendersNick = users.get(sc).getNickName();
+   User u = users.get(sc);
    //simple Message
    if(k == Kind.MSG){
      try{
-       msgBuffer = encoder.encode(CharBuffer.wrap("Message "+sendersNick+" "+msg));
+        msgBuffer = encoder.encode(CharBuffer.wrap("Message "+sendersNick+" "+msg));
      }catch(CharacterCodingException e){
-       System.err.println( "Exception: couldn't write to socket\n" );
+       System.err.println( "Exception: "+e );
       }
     }
     //new nick - redefined
@@ -210,7 +218,7 @@ public class Server
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap("NEWNICK "+msg+"\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't write to socket" );
+        System.err.println( "Exception: "+e );
        }
     }
     //new user joins room
@@ -218,17 +226,24 @@ public class Server
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap("JOINED "+sendersNick+"\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't write to socket" );
+        System.err.println( "Exception: "+e );
        }
     }
     else if(k == Kind.LEFT){
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap("LEFT "+sendersNick+"\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't write to socket" );
+        System.err.println( "Exception: "+e );
        }
     }
-  sendMessage(sc, msgBuffer, k);
+    else if(k == Kind.ERROR){
+      try{
+        msgBuffer = encoder.encode(CharBuffer.wrap("ERROR\n"));
+      }catch(CharacterCodingException e){
+        System.err.println( "Exception: "+e );
+       }
+    }
+    sendMessage(sc, msgBuffer, k);
 }
 
  static private void processCommand(SocketChannel sc, String cmd){
@@ -243,8 +258,11 @@ public class Server
        if(nicks.containsValue(sc)){
          //removes old nick
          nicks.remove(u.getNickName());
-         processMessage(sc, u.getNickName()+" "+splited[1], Kind.NEWNICK);
+         if(u.getState() == State.INSIDE)
+          processMessage(sc, u.getNickName()+" "+splited[1], Kind.NEWNICK);
        }
+       if(u.getState() == State.INIT)
+        u.setState(State.OUTSIDE);
        u.setNickName(splited[1]);
        users.put(sc,u);
        nicks.put(splited[1],sc);
@@ -256,11 +274,17 @@ public class Server
   }
 
     //CREATES NEW ROOM AND ADDS USER TO THE NEW ROOM OR ADDS USER TO THE EXISTING ROOM
-    else if(splited[0].equals("join") && splited.length == 2){
+    else if(splited[0].equals("join") && splited.length == 2 && u.getState() != State.INIT){
         Set<SocketChannel> set = new HashSet<SocketChannel>();
+        //leaves current room
+        if(u.getState() == State.INSIDE){
+          inception = true;
+          processCommand(sc,"leave");
+        }
         //ROOM ALREADY EXISTS
         if(rooms.containsKey(splited[1])){
           u.setRoom(splited[1]);
+          u.setState(State.INSIDE);
           set = rooms.get(splited[1]);
           set.add(sc);
           rooms.put(splited[1], set);
@@ -269,14 +293,16 @@ public class Server
         //CREATES NEW ROOM
         else{
           u.setRoom(splited[1]);
+          u.setState(State.INSIDE);
           set.add(sc);
           rooms.put(splited[1], set);
         }
+        inception = false;
         valid = true;
         System.out.println(u.getNickName()+" joined "+splited[1]);
       }
     //USER u LEAVES CHAT ROOM
-    else if(splited[0].equals("leave") && splited.length == 1){
+    else if(splited[0].equals("leave") && splited.length == 1 && u.getState() == State.INSIDE){
       if(u.getRoom().equals(""))
         valid = false;
       else{
@@ -285,10 +311,60 @@ public class Server
         set.remove(sc);
         rooms.put(u.getRoom(),set);
         u.setRoom("");
+        u.setState(State.OUTSIDE);
         valid = true;
       }
     }
-    if(valid){
+    else if(splited[0].equals("bye") && splited.length == 1){
+      //close socket
+      try {
+        //send LEFT to the users in the room
+        if(u.getState() == State.INSIDE)
+          processMessage(sc, u.getNickName(), Kind.LEFT);
+        ByteBuffer msgBuffer = ByteBuffer.allocate(16384);
+        //message BYE
+        try{
+          msgBuffer = encoder.encode(CharBuffer.wrap("BYE\n"));
+        }catch(CharacterCodingException e){
+          System.err.println( "Exception: couldn't write to socket" );
+         }
+         //BYE...
+         try{
+          //writes to socket
+          sc.write(msgBuffer);
+        }catch( IOException ie ) {
+            System.err.println( "Exception: couldn't write to socket" );
+          }
+        nicks.remove(u.getNickName());
+        users.remove(sc);
+        sc.close();
+      } catch (IOException e) {
+        System.err.println(e);
+      }
+      valid = true;
+    }
+    //private Message
+    else if(splited[0].equals("priv") && splited.length == 3 && u.getState() != State.INIT){
+      ByteBuffer msgBuffer = ByteBuffer.allocate(16384);
+      //encode message
+      try{
+        msgBuffer = encoder.encode(CharBuffer.wrap("PRIVATE "+u.getNickName()+" "+splited[2]+"\n"));
+      }catch(CharacterCodingException e){
+        System.err.println( "Exception: couldn't write to socket" );
+       }
+       //BYE...
+       try{
+        //writes to socket
+        if(nicks.containsKey(splited[1])){
+          nicks.get(splited[1]).write(msgBuffer);
+          valid = true;
+        }
+      }catch( IOException ie ) {
+          System.err.println( "Exception: couldn't write to socket" );
+        }
+    }
+    //
+    if(valid && !inception){
       ByteBuffer ok = ByteBuffer.allocate(1638);
       try{
         ok = encoder.encode(CharBuffer.wrap("OK\n"));
@@ -302,7 +378,7 @@ public class Server
         }
     }
     //WRITES ERROR TO SOCKET
-    else{
+    else if(!valid){
       ByteBuffer error = ByteBuffer.allocate(1638);
       try{
         error = encoder.encode(CharBuffer.wrap("ERROR\n"));
