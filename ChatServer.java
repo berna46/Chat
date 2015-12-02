@@ -6,7 +6,7 @@ import java.nio.charset.*;
 import java.util.*;
 
 
-public class Server
+public class ChatServer
 {
   // A pre-allocated buffer for the received data
   static private final ByteBuffer buffer = ByteBuffer.allocate( 16384 );
@@ -153,10 +153,10 @@ public class Server
       else
         processCommand(sc, message.substring(1,message.length()));//escape "/"
     }
-    else if(st == State.INSIDE)
+    else if(st == State.INSIDE && message.length()>0)
       processMessage(sc, message, Kind.MSG);
     else
-    processMessage(sc, message, Kind.ERROR);
+      processMessage(sc, message, Kind.ERROR);
     return true;
   }
 
@@ -175,13 +175,14 @@ public class Server
            try{
             //writes to socket
             other_sc.write(msgBuffer);
-          }catch( IOException ie ) {
+          }catch( IOException e ) {
               System.err.println( "Exception: couldn't write to socket" );
             }
          }
        }
      }
    }
+
    //user isn't in any room
     else{
       ByteBuffer errorBuffer = ByteBuffer.allocate(16384);
@@ -208,7 +209,7 @@ public class Server
    //simple Message
    if(k == Kind.MSG){
      try{
-        msgBuffer = encoder.encode(CharBuffer.wrap("Message "+sendersNick+" "+msg));
+        msgBuffer = encoder.encode(CharBuffer.wrap("MESSAGE "+sendersNick+" "+msg+"\n"));
      }catch(CharacterCodingException e){
        System.err.println( "Exception: "+e );
       }
@@ -229,6 +230,7 @@ public class Server
         System.err.println( "Exception: "+e );
        }
     }
+    //user leaves room
     else if(k == Kind.LEFT){
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap("LEFT "+sendersNick+"\n"));
@@ -236,6 +238,7 @@ public class Server
         System.err.println( "Exception: "+e );
        }
     }
+    //error
     else if(k == Kind.ERROR){
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap("ERROR\n"));
@@ -252,25 +255,25 @@ public class Server
    boolean valid = false;
    //CREATES A NEW nick
    if(splited[0].equals("nick") && splited.length==2){
-     //VERIFIES IF THE nick ISN'T ALREADY TAKEN
+    //VERIFIES IF THE nick ISN'T ALREADY TAKEN
      if(!nicks.containsKey(splited[1])){
        //reset nick
        if(nicks.containsValue(sc)){
          //removes old nick
          nicks.remove(u.getNickName());
-         if(u.getState() == State.INSIDE)
+          if(u.getState() == State.INSIDE)
           processMessage(sc, u.getNickName()+" "+splited[1], Kind.NEWNICK);
        }
        if(u.getState() == State.INIT)
         u.setState(State.OUTSIDE);
-       u.setNickName(splited[1]);
-       users.put(sc,u);
-       nicks.put(splited[1],sc);
-       valid = true;
-       System.out.println("New nick: "+splited[1]);
+        u.setNickName(splited[1]);
+        users.put(sc,u);
+        nicks.put(splited[1],sc);
+        valid = true;
+        System.out.println("New nick: "+splited[1]);
       }
-     else
-      System.out.println("nickName - "+splited[1]+" - already exists");
+    else
+     System.out.println("nickName - "+splited[1]+" - isn't valid");
   }
 
     //CREATES NEW ROOM AND ADDS USER TO THE NEW ROOM OR ADDS USER TO THE EXISTING ROOM
@@ -344,11 +347,15 @@ public class Server
       valid = true;
     }
     //private Message
-    else if(splited[0].equals("priv") && splited.length == 3 && u.getState() != State.INIT){
+    else if(splited[0].equals("priv") && splited.length>=3 && u.getState() != State.INIT){
       ByteBuffer msgBuffer = ByteBuffer.allocate(16384);
+      //create message
+      String msg = new String("PRIVATE "+u.getNickName());
+      for(int i=2 ; i<splited.length; i++)
+        msg+=" "+splited[i];
       //encode message
       try{
-        msgBuffer = encoder.encode(CharBuffer.wrap("PRIVATE "+u.getNickName()+" "+splited[2]+"\n"));
+        msgBuffer = encoder.encode(CharBuffer.wrap(msg+"\n"));
       }catch(CharacterCodingException e){
         System.err.println( "Exception: couldn't write to socket" );
        }

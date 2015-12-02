@@ -20,10 +20,10 @@ public class ChatClient {
     // Se for necessÃ¡rio adicionar variÃ¡veis ao objecto ChatClient, devem
     // ser colocadas aqui
     private SocketChannel sc;
-    private BufferedReader reader;
-    private Boolean connectionOver = false;
+    private BufferedReader buffer;
     private final Charset charset = Charset.forName("UTF8");
     private final CharsetEncoder encoder = charset.newEncoder();
+    private Boolean connectionOver = false;
 
 
 
@@ -58,6 +58,8 @@ public class ChatClient {
                 } finally {
                    chatBox.setText("");
                 }
+                if (connectionOver)
+                  System.exit(0);
             }
         });
         // --- Fim da inicializaÃ§Ã£o da interface grÃ¡fica
@@ -69,7 +71,7 @@ public class ChatClient {
           sc.configureBlocking(true);
           sc.connect(new InetSocketAddress(server, port));
         } catch (IOException e) {
-          System.out.println(e.getMessage());
+          System.out.println(e);
         }
 
 
@@ -82,28 +84,34 @@ public class ChatClient {
       sc.write(encoder.encode(CharBuffer.wrap(message)));
     }
 
-
     // MÃ©todo principal do objecto
     public void run() throws IOException {
       try {
-        while (!sc.finishConnect())
-          ;
-      } catch (Exception e) {
-        System.out.println(e.getMessage());
+        while (!sc.finishConnect());
+      } catch (Exception ex) {
+        System.out.println("There was an error connecting with the server! (" + ex.getMessage() + ")");
         System.exit(0);
         return;
       }
 
-      reader = new BufferedReader(new InputStreamReader(sc.socket().getInputStream()));
+      buffer = new BufferedReader(new InputStreamReader(sc.socket().getInputStream()));
 
       while (true) {
-        String received_msg = reader.readLine();
-        if (received_msg == null)
+        String msg = buffer.readLine();
+        if (msg == null)
           break;
-        received_msg = received_msg.trim();
-        printMessage(received_msg);
-      }
+        // *** beauty **
+        String[] splited = msg.split("\\s+");
+        if(splited[0].equals("MESSAGE")){
+          msg=new String(splited[1]+":");
+          for(int i=2 ; i<splited.length; i++)
+            msg+=" "+splited[i];
+        }
+        else if(splited[0].equals("NEWNICK"))
+          msg=new String(splited[1]+" mudou de nome para "+splited[2]);
 
+        printMessage(msg+"\n");
+      }
       sc.close();
 
       // Wait a moment before closing the client
