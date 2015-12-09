@@ -21,9 +21,9 @@ public class ChatClient {
     // ser colocadas aqui
     private SocketChannel sc;
     private BufferedReader buffer;
+    private Boolean connected = false;
     private final Charset charset = Charset.forName("UTF8");
     private final CharsetEncoder encoder = charset.newEncoder();
-    private Boolean connectionOver = false;
 
 
 
@@ -58,7 +58,7 @@ public class ChatClient {
                 } finally {
                    chatBox.setText("");
                 }
-                if (connectionOver)
+                if (connected)
                   System.exit(0);
             }
         });
@@ -114,18 +114,15 @@ public class ChatClient {
       }
       sc.close();
 
-      // Wait a moment before closing the client
       try {
-        Thread.sleep(73);
+        Thread.sleep(46);//???
       } catch (InterruptedException ex) {
         System.out.println(ex.getMessage());
         System.exit(0);
         return;
       }
 
-      connectionOver = true;
-
-
+      connected = true;
     }
 
 
