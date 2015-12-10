@@ -145,18 +145,25 @@ public class ChatServer
       return false;
     }
     //Decode and print the message to stdout
-    String message = decoder.decode(buffer).toString();
+    String msg = decoder.decode(buffer).toString();
+    /*** ESCAPES MULTIPLE \n ***/
+    /** GET \n **/
+     String[] splited = msg.split("\n+");
+     for( int i =0 ; i<splited.length; i++)
+        System.out.println(splited[i]);
     //CHECKS IF message IS A MESSAGE OR COMMAND
-    if(message.length()>0 && message.charAt(0)=='/'){
-      if(message.length()>1 && message.charAt(1)=='/' && st == State.INSIDE)
-        processMessage(sc, message.substring(1,message.length()), Kind.MSG);//escape "/"
+    for( String message: splited){
+      if(message.length()>0 && message.charAt(0)=='/'){
+        if(message.length()>1 && message.charAt(1)=='/' && st == State.INSIDE)
+          processMessage(sc, message.substring(1,message.length()), Kind.MSG);//escape "/"
+        else
+          processCommand(sc, message.substring(1,message.length()));//escape "/"
+      }
+      else if(st == State.INSIDE && message.length()>0)
+        processMessage(sc, message, Kind.MSG);
       else
-        processCommand(sc, message.substring(1,message.length()));//escape "/"
-    }
-    else if(st == State.INSIDE && message.length()>0)
-      processMessage(sc, message, Kind.MSG);
-    else
-      processMessage(sc, message, Kind.ERROR);
+        processMessage(sc, message, Kind.ERROR);
+      }
     return true;
   }
 
