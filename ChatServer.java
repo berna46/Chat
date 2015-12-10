@@ -26,6 +26,9 @@ public class ChatServer
 
   static private boolean inception = false;
 
+  static private String incomplete_message = new String("");
+  static private boolean incomplete = false;
+
   static public void main( String args[] ) throws Exception {
     // Parse port from command line
     int port = Integer.parseInt( args[0] );
@@ -146,9 +149,24 @@ public class ChatServer
     }
     //Decode and print the message to stdout
     String msg = decoder.decode(buffer).toString();
-    /*** ESCAPES MULTIPLE \n ***/
     /** GET \n **/
+    if(!msg.contains("\n")){
+      System.out.println("INCOMPLETE");
+      incomplete_message+=msg;
+      System.out.println(incomplete_message);
+      incomplete = true;
+    }
+    else if(incomplete){
+      System.out.println("INCOMPLETE -> COMPLETE");
+      incomplete_message+=msg;
+      msg = incomplete_message;
+      incomplete = false;
+    }
+
+    if(!incomplete){
+      System.out.println("COMPLETE");
      String[] splited = msg.split("\n+");
+     /*** ESCAPES MULTIPLE \n ***/
      for( int i =0 ; i<splited.length; i++)
         System.out.println(splited[i]);
     //CHECKS IF message IS A MESSAGE OR COMMAND
@@ -164,6 +182,8 @@ public class ChatServer
       else
         processMessage(sc, message, Kind.ERROR);
       }
+      incomplete_message = new String("");
+    }
     return true;
   }
 
@@ -196,13 +216,13 @@ public class ChatServer
       try{
         errorBuffer = encoder.encode(CharBuffer.wrap("ERROR\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't write to socket" );
+        System.err.println( "Exception: couldn't encode message" );
        }
        try{
         //writes error to socket
         sc.write(msgBuffer);
       }catch( IOException ie ) {
-          System.err.println( "Exception: couldn't write to socket" );
+          System.err.println( "Exception:  couldn't write to socket" );
         }
     }
 
@@ -259,7 +279,7 @@ public class ChatServer
  static private void processCommand(SocketChannel sc, String cmd){
    String[] splited = cmd.split("\\s+");
    User u = users.get(sc);
-   boolean valid = false;
+   boolean valid = false, left = false;
    //CREATES A NEW nick
    if(splited[0].equals("nick") && splited.length==2){
     //VERIFIES IF THE nick ISN'T ALREADY TAKEN
@@ -336,21 +356,23 @@ public class ChatServer
         try{
           msgBuffer = encoder.encode(CharBuffer.wrap("BYE\n"));
         }catch(CharacterCodingException e){
-          System.err.println( "Exception: couldn't write to socket" );
+          System.err.println( "Exception: couldn't encode message" );
          }
          //BYE...
          try{
           //writes to socket
           sc.write(msgBuffer);
         }catch( IOException ie ) {
-            System.err.println( "Exception: couldn't write to socket" );
+            System.err.println( "Exception:couldn't write to socket" );
           }
         nicks.remove(u.getNickName());
         users.remove(sc);
         sc.close();
+        left = true;
       } catch (IOException e) {
-        System.err.println(e);
+        System.err.println("Exception: couldn't close socket");
       }
+      //close socket
       valid = true;
     }
     //private Message
@@ -364,7 +386,7 @@ public class ChatServer
       try{
         msgBuffer = encoder.encode(CharBuffer.wrap(msg+"\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't write to socket" );
+        System.err.println( "Exception: couldn't encode message" );
        }
        //BYE...
        try{
@@ -378,7 +400,7 @@ public class ChatServer
         }
     }
     //
-    if(valid && !inception){
+    if(valid && !inception && !left){
       ByteBuffer ok = ByteBuffer.allocate(1638);
       try{
         ok = encoder.encode(CharBuffer.wrap("OK\n"));
@@ -397,7 +419,7 @@ public class ChatServer
       try{
         error = encoder.encode(CharBuffer.wrap("ERROR\n"));
       }catch(CharacterCodingException e){
-        System.err.println( "Exception: couldn't encose message");
+        System.err.println( "Exception: couldn't encode message");
       }
       try{
           sc.write(error);

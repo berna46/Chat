@@ -26,7 +26,6 @@ public class ChatClient {
     private final CharsetEncoder encoder = charset.newEncoder();
 
 
-
     // MÃ©todo a usar para acrescentar uma string Ã  caixa de texto
     // * NÃƒO MODIFICAR *
     public void printMessage(final String message) {
@@ -81,7 +80,7 @@ public class ChatClient {
     // MÃ©todo invocado sempre que o utilizador insere uma mensagem
     // na caixa de entrada
     public void newMessage(String message) throws IOException {
-      sc.write(encoder.encode(CharBuffer.wrap(message)));
+      sc.write(encoder.encode(CharBuffer.wrap(message+"\n")));
     }
 
     // MÃ©todo principal do objecto
@@ -121,7 +120,6 @@ public class ChatClient {
         System.exit(0);
         return;
       }
-
       connected = true;
     }
 
