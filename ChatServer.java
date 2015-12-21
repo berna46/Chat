@@ -436,6 +436,7 @@ public class ChatServer{
         System.err.println("Exception: couldn't close socket");
       }
       //close socket
+      sc.close();
       valid = true;
     }
     //private Message
