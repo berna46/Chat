@@ -6,8 +6,63 @@ import java.nio.charset.*;
 import java.util.*;
 
 
-public class ChatServer
-{
+public class ChatServer{
+
+
+  enum State {INIT, OUTSIDE, INSIDE};
+
+  public static class User{
+
+    private String nickName;
+    private SocketChannel sc;
+    private State state;
+    private String room;
+
+    public User(String nickName, SocketChannel sc) {
+     this.nickName = nickName;
+     this.sc = sc;
+     this.state = State.INIT;
+     this.room = "";
+   }
+
+     public User(SocketChannel sc) {
+      this.nickName = "";
+      this.sc = sc;
+      this.state = State.INIT;
+      this.room = "";
+    }
+
+    public String getNickName() {
+      return this.nickName;
+    }
+
+    public void setNickName(String n) {
+      this.nickName = n;
+    }
+
+    public SocketChannel getSC() {
+      return this.sc;
+    }
+
+    public State getState() {
+      return this.state;
+    }
+
+    public void setState(State s) {
+      this.state = s;
+    }
+
+    public String getRoom(){
+      return this.room;
+    }
+
+    public void setRoom(String r){
+      this.room = r;
+    }
+
+  }
+
+
   // A pre-allocated buffer for the received data
   static private final ByteBuffer buffer = ByteBuffer.allocate( 16384 );
 
@@ -194,19 +249,27 @@ public class ChatServer
      Set<SocketChannel> set = rooms.get(u.getRoom());
      Iterator<SocketChannel> it = set.iterator();
      //msgBuffer.flip();
+     if(k == Kind.MSG){
+       try{
+        //writes to it self
+        sc.write(msgBuffer);
+      }catch( IOException e ) {
+          System.err.println( "Exception: couldn't write to socket" );
+        }
+     }
      if(k != Kind.ERROR){
        while(it.hasNext()){
          SocketChannel other_sc = it.next();
-         if(other_sc != sc){
            msgBuffer.rewind();
-           try{
-            //writes to socket
-            other_sc.write(msgBuffer);
-          }catch( IOException e ) {
-              System.err.println( "Exception: couldn't write to socket" );
-            }
+           if(other_sc != sc){
+             try{
+              //writes to socket
+              other_sc.write(msgBuffer);
+            }catch( IOException e ) {
+                System.err.println( "Exception: couldn't write to socket" );
+              }
          }
-       }
+     }
      }
    }
 
